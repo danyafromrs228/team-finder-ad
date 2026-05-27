@@ -1,10 +1,21 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth import login, logout, update_session_auth_hash, authenticate
+from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
-from django.urls import reverse
-from .forms import UserRegistrationForm, UserLoginForm, UserProfileEditForm, UserChangePasswordForm
+
+from .forms import (
+    UserRegistrationForm,
+    UserLoginForm,
+    UserProfileEditForm,
+    UserChangePasswordForm,
+)
 from .models import User
+from .utils import paginate_queryset
+
+
+FILTER_OWNERS_OF_FAVORITE_PROJECTS = "owners-of-favorite-projects"
+FILTER_OWNERS_OF_PARTICIPATING_PROJECTS = "owners-of-participating-projects"
+FILTER_INTERESTED_IN_MY_PROJECTS = "interested-in-my-projects"
+FILTER_PARTICIPANTS_OF_MY_PROJECTS = "participants-of-my-projects"
 
 
 def register_view(request):
@@ -23,8 +34,7 @@ def login_view(request):
     if request.method == "POST":
         form = UserLoginForm(request.POST)
         if form.is_valid():
-            user = form.user
-            login(request, user)
+            login(request, form.user)
             return redirect("projects:list")
     else:
         form = UserLoginForm()
@@ -71,22 +81,23 @@ def users_list_view(request):
     active_filter = request.GET.get("filter")
 
     if request.user.is_authenticated and active_filter:
-        if active_filter == "owners-of-favorite-projects":
+        if active_filter == FILTER_OWNERS_OF_FAVORITE_PROJECTS:
             favorite_projects = request.user.favorites.all()
             users = User.objects.filter(owned_projects__in=favorite_projects).distinct()
-        elif active_filter == "owners-of-participating-projects":
+
+        elif active_filter == FILTER_OWNERS_OF_PARTICIPATING_PROJECTS:
             participating_projects = request.user.participated_projects.all()
             users = User.objects.filter(owned_projects__in=participating_projects).distinct()
-        elif active_filter == "interested-in-my-projects":
+
+        elif active_filter == FILTER_INTERESTED_IN_MY_PROJECTS:
             my_projects = request.user.owned_projects.all()
             users = User.objects.filter(favorites__in=my_projects).distinct()
-        elif active_filter == "participants-of-my-projects":
+
+        elif active_filter == FILTER_PARTICIPANTS_OF_MY_PROJECTS:
             my_projects = request.user.owned_projects.all()
             users = User.objects.filter(participated_projects__in=my_projects).distinct()
 
-    paginator = Paginator(users, 12)
-    page_number = request.GET.get("page")
-    page_obj = paginator.get_page(page_number)
+    page_obj = paginate_queryset(request, users)
 
     query_prefix = f"filter={active_filter}&" if active_filter else ""
 

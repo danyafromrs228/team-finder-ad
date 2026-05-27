@@ -1,9 +1,12 @@
-from django import forms
-from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm
-from django.contrib.auth import authenticate
-from django.core.exceptions import ValidationError
-from .models import User
 import re
+
+from django import forms
+from django.contrib.auth import authenticate
+from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm
+from django.core.exceptions import ValidationError
+
+from .models import User
+from .utils import validate_github_url, validate_phone_number
 
 
 class UserRegistrationForm(forms.ModelForm):
@@ -22,8 +25,14 @@ class UserRegistrationForm(forms.ModelForm):
 
 
 class UserLoginForm(forms.Form):
-    email = forms.EmailField(label="Email", widget=forms.EmailInput(attrs={'class': 'form-control'}))
-    password = forms.CharField(label="Пароль", widget=forms.PasswordInput(attrs={'class': 'form-control'}))
+    email = forms.EmailField(
+        label="Email",
+        widget=forms.EmailInput(attrs={'class': 'form-control'})
+    )
+    password = forms.CharField(
+        label="Пароль",
+        widget=forms.PasswordInput(attrs={'class': 'form-control'})
+    )
 
     def clean(self):
         cleaned_data = super().clean()
@@ -48,28 +57,24 @@ class UserProfileEditForm(forms.ModelForm):
 
     def clean_phone(self):
         phone = self.cleaned_data.get("phone")
-        if phone:
-            if not re.match(r"^(\+7|8)?\d{10}$", phone):
-                raise ValidationError("Номер телефона должен быть в формате 8XXXXXXXXXX или +7XXXXXXXXXX")
-
-            if phone.startswith("8"):
-                phone = "+7" + phone[1:]
-
-            user_id = self.instance.id if self.instance else None
-            if User.objects.filter(phone=phone).exclude(id=user_id).exists():
-                raise ValidationError("Пользователь с таким номером телефона уже существует")
-
-        return phone
+        return validate_phone_number(phone, self.instance)
 
     def clean_github_url(self):
         github_url = self.cleaned_data.get("github_url")
-        if github_url and "github.com" not in github_url:
-            raise ValidationError("Ссылка должна вести на GitHub")
-        return github_url
+        return validate_github_url(github_url)
 
 
 class UserChangePasswordForm(PasswordChangeForm):
-    old_password = forms.CharField(widget=forms.PasswordInput, label="Текущий пароль")
-    new_password1 = forms.CharField(widget=forms.PasswordInput, label="Новый пароль")
-    new_password2 = forms.CharField(widget=forms.PasswordInput, label="Подтверждение пароля")
+    old_password = forms.CharField(
+        widget=forms.PasswordInput,
+        label="Текущий пароль"
+    )
+    new_password1 = forms.CharField(
+        widget=forms.PasswordInput,
+        label="Новый пароль"
+    )
+    new_password2 = forms.CharField(
+        widget=forms.PasswordInput,
+        label="Подтверждение пароля"
+    )
     

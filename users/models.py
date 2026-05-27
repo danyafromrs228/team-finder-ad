@@ -1,43 +1,51 @@
-from django.db import models
-from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
-from django.core.validators import RegexValidator, URLValidator
-from django.core.exceptions import ValidationError
-from PIL import Image, ImageDraw, ImageFont
-from io import BytesIO
-from django.core.files.base import ContentFile
 import random
-import os
+from io import BytesIO
+
+from django.core.files.base import ContentFile
+from django.core.validators import RegexValidator, URLValidator
+from django.db import models
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
+from PIL import Image, ImageDraw, ImageFont
+
+from .managers import UserManager
 
 
-class UserManager(BaseUserManager):
-    def create_user(self, email, name, surname, password=None, **extra_fields):
-        if not email:
-            raise ValueError("Email обязателен")
-        email = self.normalize_email(email)
-        user = self.model(email=email, name=name, surname=surname, **extra_fields)
-        user.set_password(password)
-        user.save(using=self._db)
-        return user
+MAX_NAME_LENGTH = 124
+MAX_PHONE_LENGTH = 12
+MAX_ABOUT_LENGTH = 256
 
-    def create_superuser(self, email, name, surname, password=None, **extra_fields):
-        extra_fields.setdefault("is_staff", True)
-        extra_fields.setdefault("is_superuser", True)
-        extra_fields.setdefault("is_active", True)
-        return self.create_user(email, name, surname, password, **extra_fields)
+AVATAR_SIZE = 200
+AVATAR_FONT_SIZE = 100
+
+COLOR_RED = "#FF6B6B"
+COLOR_TEAL = "#4ECDC4"
+COLOR_BLUE = "#45B7D1"
+COLOR_GREEN = "#96CEB4"
+COLOR_YELLOW = "#FFEAA7"
+COLOR_PURPLE = "#DDA0DD"
+COLOR_MINT = "#98D8C8"
+COLOR_ORANGE = "#F7B731"
+COLOR_SKY_BLUE = "#5D9BEC"
+COLOR_PINK = "#F47A7A"
+
+AVATAR_COLORS = [
+    COLOR_RED, COLOR_TEAL, COLOR_BLUE, COLOR_GREEN, COLOR_YELLOW,
+    COLOR_PURPLE, COLOR_MINT, COLOR_ORANGE, COLOR_SKY_BLUE, COLOR_PINK,
+]
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    AVATAR_COLORS = [
-        "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
-        "#DDA0DD", "#98D8C8", "#F7B731", "#5D9BEC", "#F47A7A"
-    ]
-
     email = models.EmailField(unique=True, verbose_name="Email")
-    name = models.CharField(max_length=124, verbose_name="Имя")
-    surname = models.CharField(max_length=124, verbose_name="Фамилия")
-    avatar = models.ImageField(upload_to="avatars/", blank=True, null=True, verbose_name="Аватар")
+    name = models.CharField(max_length=MAX_NAME_LENGTH, verbose_name="Имя")
+    surname = models.CharField(max_length=MAX_NAME_LENGTH, verbose_name="Фамилия")
+    avatar = models.ImageField(
+        upload_to="avatars/",
+        blank=True,
+        null=True,
+        verbose_name="Аватар"
+    )
     phone = models.CharField(
-        max_length=12,
+        max_length=MAX_PHONE_LENGTH,
         blank=True,
         validators=[
             RegexValidator(
@@ -47,8 +55,16 @@ class User(AbstractBaseUser, PermissionsMixin):
         ],
         verbose_name="Телефон"
     )
-    github_url = models.URLField(blank=True, validators=[URLValidator()], verbose_name="GitHub")
-    about = models.TextField(max_length=256, blank=True, verbose_name="О себе")
+    github_url = models.URLField(
+        blank=True,
+        validators=[URLValidator()],
+        verbose_name="GitHub"
+    )
+    about = models.TextField(
+        max_length=MAX_ABOUT_LENGTH,
+        blank=True,
+        verbose_name="О себе"
+    )
     is_active = models.BooleanField(default=True, verbose_name="Активен")
     is_staff = models.BooleanField(default=False, verbose_name="Персонал")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата регистрации")
@@ -76,39 +92,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     def save(self, *args, **kwargs):
         creating = not self.pk
         if creating and not self.avatar:
-            self.generate_avatar()
+            from .utils import generate_avatar
+            generate_avatar(self)
         if self.phone:
             if self.phone.startswith("8"):
                 self.phone = "+7" + self.phone[1:]
         super().save(*args, **kwargs)
-
-    def generate_avatar(self):
-        size = (200, 200)
-        color = random.choice(self.AVATAR_COLORS)
-
-        image = Image.new("RGB", size, color)
-        draw = ImageDraw.Draw(image)
-
-        letter = self.name[0].upper() if self.name else "?"
-
-        try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 100)
-        except:
-            font = ImageFont.load_default()
-
-        bbox = draw.textbbox((0, 0), letter, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-        position = ((size[0] - text_width) / 2, (size[1] - text_height) / 2)
-
-        draw.text(position, letter, fill="white", font=font)
-
-        buffer = BytesIO()
-        image.save(buffer, format="PNG")
-        buffer.seek(0)
-
-        self.avatar.save(f"avatar_{self.email}.png", ContentFile(buffer.read()), save=False)
-        buffer.close()
 
     @property
     def full_name(self):
